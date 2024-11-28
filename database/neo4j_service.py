@@ -1,61 +1,83 @@
-import uuid
-
-
-class DeviceDetails:
+class Neo4jService:
     def __init__(self, driver):
         self.driver = driver
 
-    def create_data(self, data):
+    def insert_devices(self, devices: list):
+        query = """
+        MERGE (d:Device {id: $id})
+            SET d.name = $name,
+            d.brand = $brand,
+            d.model = $model,
+            d.os = $os
+        """
+        result = []
         with self.driver.session() as session:
-            query = """
-            MERGE (source:Device {
-                device_id: $source_id,
-                name: $source_name,
-                brand: $source_brand,
-                model: $source_model,
-                os: $source_os
-            })
-            MERGE (target:Device {
-                device_id: $target_id,
-                name: $target_name,
-                brand: $target_brand,
-                model: $target_model,
-                os: $target_os
-            })
-            MERGE (source)-[interaction:CONNECTED {
-                transaction_id: $transaction_id,
-                method: $method,
-                bluetooth_version: $bluetooth_version,
-                signal_strength_dbm: $signal_strength_dbm,
-                distance_meters: $distance_meters,
-                duration_seconds: $duration_seconds,
-                timestamp: datetime($timestamp)
-            }]->(target)
-            RETURN interaction.transaction_id as transaction_id
-            """
+            for d in devices:
+                session.run(query, d)
+                result.append(d['id'])
 
-            transaction_id = str(uuid.uuid4())
+        return result
 
-            result = session.run(query, {
-                'source_id': data["devices"][0]['id'],
-                'source_name': data["devices"][0]['name'],
-                'source_brand': data["devices"][0]['brand'],
-                'source_model': data["devices"][0]['model'],
-                'source_os': data["devices"][0]['os'],
+    def create_interaction(self, interaction: dict):
+        query = """
+        MATCH (from:Device {id: $from_device}), (to:Device {id: $to_device})
+        CREATE (from)-[r:CONNECTED {
+            method: $method,
+            bluetooth_version: $bluetooth_version,
+            signal_strength_dbm: $signal_strength_dbm,
+            distance_meters: $distance_meters,
+            duration_seconds: $duration_seconds,
+            timestamp: $timestamp}]->(to)
+        """
+        with self.driver.session() as session:
+            session.run(query, interaction)
 
-                'target_id': data["devices"][1]['id'],
-                'target_name': data["devices"][1]['name'],
-                'target_brand': data["devices"][1]['brand'],
-                'target_model': data["devices"][1]['model'],
-                'target_os': data["devices"][1]['os'],
+        return 'created'
 
-                'transaction_id': transaction_id,
-                'method': data['interaction']['method'],
-                'bluetooth_version': data['interaction']['bluetooth_version'],
-                'signal_strength_dbm': data['interaction']['signal_strength_dbm'],
-                'distance_meters': data['interaction']['distance_meters'],
-                'duration_seconds': data['interaction']['duration_seconds'],
-                'timestamp': data['interaction']['timestamp']
-            })
+    def get_by_bluetooth(self):
+        query = """
+        MATCH (start:Device)
+        MATCH (end:Device)
+        WHERE start <> end
+        MATCH path = shortestPath((start)-[:CONNECTED*]->(end))
+        WHERE ALL(r IN relationships(path) WHERE r.method = 'Bluetooth')
+        WITH path, length(path) AS pathLength
+        ORDER BY pathLength DESC
+        LIMIT 1
+        RETURN path
+        """
+        with self.driver.session() as session:
+            result = session.run(query).data()
 
-        return result.single()
+        return result
+
+    def get_by_stronger_than(self, signal_strength):
+        query = """
+        MATCH (d1:Device)-[r:CONNECTED]->(d2:Device)
+        WHERE r.signal_strength_dbm > $signal_strength
+        RETURN d1, r, d2
+        """
+        with self.driver.session() as session:
+            result = session.run(query, signal=signal_strength).data()
+
+        return result
+
+    def get_devices_connected(self, device_id):
+        query = """
+        MATCH (:Device {id: $device_id})-[:CONNECTED]-(:Device) 
+        RETURN count(*) as count
+        """
+        with self.driver.session() as session:
+            result = session.run(query, device=device_id).single()
+
+        return result['count']
+
+    def check_direct_connection(self, from_device_id, to_device_id):
+        query = """
+        MATCH (from:Device {id: $from_device_id})-[:CONNECTED]-(to:Device {id: $to_device_id})
+        RETURN count(*) as count
+        """
+        with self.driver.session() as session:
+            result = session.run(query, from_device=from_device_id, to=to_device_id).single()
+
+        return result['count'] > 0
