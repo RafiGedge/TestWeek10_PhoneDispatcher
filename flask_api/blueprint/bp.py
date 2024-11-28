@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, request, jsonify, current_app
 
-from neo4j_service import DeviceDetails
+from database.neo4j_service import DeviceDetails
 
 app_bp = Blueprint('app_bp', __name__)
 

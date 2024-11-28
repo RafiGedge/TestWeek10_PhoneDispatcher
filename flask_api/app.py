@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_api.blueprint.bp import app_bp
-from init_db import init_neo4j
+from database.init_db import init_neo4j
 
 app = Flask(__name__)
 app.register_blueprint(app_bp)
