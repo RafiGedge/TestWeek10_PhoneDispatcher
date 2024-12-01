@@ -1,9 +1,9 @@
 import logging
 from flask import Blueprint, request, jsonify, current_app
 
-from database.neo4j_service import Neo4jService
+from service.neo4j_service import Neo4jService
 
-app_bp = Blueprint('app_bp', __name__, url_prefix='api')
+app_bp = Blueprint('app_bp', __name__, url_prefix='/api')
 
 
 @app_bp.route('/phone_tracker', methods=['POST'])
@@ -39,7 +39,7 @@ def devices_by_bluetooth():
 def devices_by_stronger_signal(signal_strength):
     try:
         db = Neo4jService(current_app.neo4j_driver)
-        result = db.get_by_stronger_than(signal_strength)
+        result = db.get_by_stronger_than(int(signal_strength))
         return jsonify(result), 200
     except Exception as e:
         print(f'Error in GET /api/stronger_signal: {e}')

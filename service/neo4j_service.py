@@ -8,12 +8,16 @@ class Neo4jService:
             SET d.name = $name,
             d.brand = $brand,
             d.model = $model,
-            d.os = $os
+            d.os = $os,
+            d.latitude = $latitude,
+            d.longitude = $longitude,
+            d.altitude_meters = $altitude_meters,
+            d.accuracy_meters = $accuracy_meters
         """
         result = []
         with self.driver.session() as session:
             for d in devices:
-                session.run(query, d)
+                session.run(query, {k: d[k] for k in ['id', 'name', 'brand', 'model', 'os']} | d['location'])
                 result.append(d['id'])
 
         return result
@@ -44,7 +48,7 @@ class Neo4jService:
         WITH path, length(path) AS pathLength
         ORDER BY pathLength DESC
         LIMIT 1
-        RETURN path
+        RETURN length(path)
         """
         with self.driver.session() as session:
             result = session.run(query).data()
@@ -58,8 +62,9 @@ class Neo4jService:
         RETURN d1, r, d2
         """
         with self.driver.session() as session:
-            result = session.run(query, signal=signal_strength).data()
+            result = session.run(query, signal_strength=signal_strength).data()
 
+        print(result)
         return result
 
     def get_devices_connected(self, device_id):
@@ -68,16 +73,16 @@ class Neo4jService:
         RETURN count(*) as count
         """
         with self.driver.session() as session:
-            result = session.run(query, device=device_id).single()
+            result = session.run(query, device_id=device_id).single()
 
         return result['count']
 
     def check_direct_connection(self, from_device_id, to_device_id):
         query = """
         MATCH (from:Device {id: $from_device_id})-[:CONNECTED]-(to:Device {id: $to_device_id})
-        RETURN count(*) as count
+        RETURN count(*) > 0
         """
         with self.driver.session() as session:
-            result = session.run(query, from_device=from_device_id, to=to_device_id).single()
+            result = session.run(query, from_device_id=from_device_id, to_device_id=to_device_id).single()[0]
 
-        return result['count'] > 0
+        return result
